@@ -285,13 +285,11 @@ function average<T>(
 async function improvePromptAndExamples<D, T>({
   schema,
   train,
-  test,
   getScoreFromTargetObject,
   initialPrompt = null,
 }: {
   schema: DataAndTargetSchema<D, T>;
   train: DataPoint<D, T>[];
-  test: DataPoint<D, T>[];
   getScoreFromTargetObject: (predicted: T) => number;
   initialPrompt: CompiledPromptWithFewshotExamples<D, T> | null;
 }): Promise<CompiledPromptWithFewshotExamples<D, T>> {
@@ -307,25 +305,6 @@ async function improvePromptAndExamples<D, T>({
       })),
     examples: initialPrompt?.examples ?? [],
   };
-  let averagePerformanceBefore = Number.POSITIVE_INFINITY;
-  if (initialPrompt) {
-    const performanceOnTestSetAfter = await runPromptOnData({
-      schema,
-      trainOrTest: test,
-      getScoreFromTargetObject,
-      compiledPromptWithExamples: inProcessPrompt,
-    });
-    averagePerformanceBefore = average(
-      performanceOnTestSetAfter,
-      (curr) =>
-        curr.confidence *
-        Math.abs(
-          getScoreFromTargetObject(curr.dataPoint.target) -
-            getScoreFromTargetObject(curr.dataPoint.target)
-        )
-    );
-    console.log(`averagePerformanceBefore: ${averagePerformanceBefore}`);
-  }
   const resultsWithConfidences: DataPointWithConfidence<D, T>[] =
     await runPromptOnData({
       schema,
@@ -365,29 +344,7 @@ async function improvePromptAndExamples<D, T>({
     })
   );
   inProcessPrompt.examples.push(...newFewshotExamples);
-  const performanceOnTestSetAfter = await runPromptOnData({
-    schema,
-    trainOrTest: test,
-    getScoreFromTargetObject,
-    compiledPromptWithExamples: inProcessPrompt,
-  });
-  const averagePerformanceAfter = average(
-    performanceOnTestSetAfter,
-    (curr) =>
-      curr.confidence *
-      Math.abs(
-        getScoreFromTargetObject(curr.dataPoint.target) -
-          getScoreFromTargetObject(curr.dataPoint.target)
-      )
-  );
-  console.log(`averagePerformanceAfter: ${averagePerformanceAfter}`);
-  console.log(
-    `improvement: ${averagePerformanceAfter - averagePerformanceBefore}`
-  );
-  if (averagePerformanceAfter < averagePerformanceBefore) {
-    return inProcessPrompt;
-  }
-  return initialPrompt ?? inProcessPrompt;
+  return inProcessPrompt;
 }
 
 export async function compile<D, T>({
@@ -406,12 +363,50 @@ export async function compile<D, T>({
   // TODO: uniquify with sha hashing elements
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
+
+  let averagePerformanceBefore = Number.POSITIVE_INFINITY;
+  if (initialPrompt) {
+    const performanceOnTestSetBefore = await runPromptOnData({
+      schema,
+      trainOrTest: test,
+      getScoreFromTargetObject,
+      compiledPromptWithExamples: initialPrompt,
+    });
+    averagePerformanceBefore = average(
+      performanceOnTestSetBefore,
+      (curr) =>
+        curr.confidence *
+        Math.abs(
+          getScoreFromTargetObject(curr.dataPoint.target) -
+            getScoreFromTargetObject(curr.dataPoint.target)
+        )
+    );
+    console.log(`averagePerformanceBefore: ${averagePerformanceBefore}`);
+  }
   const improvedPrompt = await improvePromptAndExamples({
     schema,
     train,
-    test,
     getScoreFromTargetObject,
     initialPrompt,
   });
+  const performanceOnTestSetAfter = await runPromptOnData({
+    schema,
+    trainOrTest: test,
+    getScoreFromTargetObject,
+    compiledPromptWithExamples: improvedPrompt,
+  });
+  const averagePerformanceAfter = average(
+    performanceOnTestSetAfter,
+    (curr) =>
+      curr.confidence *
+      Math.abs(
+        getScoreFromTargetObject(curr.dataPoint.target) -
+          getScoreFromTargetObject(curr.dataPoint.target)
+      )
+  );
+  console.log(`averagePerformanceAfter: ${averagePerformanceAfter}`);
+  console.log(
+    `improvement: ${averagePerformanceAfter - averagePerformanceBefore}`
+  );
   return improvedPrompt;
 }

@@ -17,6 +17,8 @@ async function getData() {
   return { train: parsedTrainRecords, test: parsedTestRecords };
 }
 
+// TODO: json load prompt from file
+// TODO: json schema for prompt file in json form
 async function main() {
   const { train, test } = await getData();
   const compiledPrompt = await tl.compile({
@@ -26,7 +28,6 @@ async function main() {
     getScoreFromTargetObject: (predicted) => predicted.materialityRating,
     initialPrompt: null,
   });
-  console.log(compiledPrompt);
   const compiledPromptPath = "test-results/compiled-prompt.json";
   await writeFile(compiledPromptPath, JSON.stringify(compiledPrompt, null, 2));
   console.log(`compiled prompt written to ${compiledPromptPath}`);
