@@ -410,5 +410,9 @@ export async function compile<D, T>({
   console.log(
     `improvement: ${averagePerformanceAfter - averagePerformanceBefore}`
   );
-  return improvedPrompt;
+  if (averagePerformanceAfter < averagePerformanceBefore) {
+    return improvedPrompt;
+  } else {
+    return initialPrompt ?? improvedPrompt;
+  }
 }
