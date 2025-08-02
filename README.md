@@ -1,7 +1,7 @@
 # TasteLever - Extremely Minimal Prompt Optimization For Single-Token Classification or Scoring Tasks
 
 If you have some labeled data and want to align an LLM to score targets like this:
-```json
+```javascript
 {
 	data: {
 		...
