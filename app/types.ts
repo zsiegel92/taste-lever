@@ -27,4 +27,5 @@ type Target = z.infer<typeof targetSchema>;
 export const recordSchema: DataAndTargetSchema<Data, Target> = z.object({
   data: dataSchema,
   target: targetSchema,
+  explanation: z.string().optional()
 });

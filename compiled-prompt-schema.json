@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "object",
+      "properties": {
+        "systemPrompt": {
+          "description": "The system prompt to use for the prompt.",
+          "type": "string"
+        },
+        "preExamplesPrompt": {
+          "description": "The part of the prompt that precedes few-shot examples.",
+          "type": "string"
+        },
+        "postExamplesPreTestCasePrompt": {
+          "description": "The part of the prompt after the few-shot examples that precedes the test case.",
+          "type": "string"
+        },
+        "finalPrompt": {
+          "description": "The part of the prompt that follows the test case.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "systemPrompt",
+        "preExamplesPrompt",
+        "postExamplesPreTestCasePrompt",
+        "finalPrompt"
+      ],
+      "additionalProperties": false
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "end_market_commentary",
+                  "geo_commentary",
+                  "guidance",
+                  "kpi_commentary",
+                  "other",
+                  "product_commentary",
+                  "qa_session_highlights",
+                  "segment_commentary"
+                ]
+              },
+              "takeaway": {
+                "type": "string"
+              },
+              "quotedText": {
+                "type": "string"
+              },
+              "priorContext": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "takeaway",
+              "quotedText",
+              "priorContext"
+            ],
+            "additionalProperties": false
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "materialityRating": {
+                "description": "The materiality rating of the text snippet. An integer 1 and 3!",
+                "type": "number",
+                "minimum": 1,
+                "maximum": 3
+              }
+            },
+            "required": [
+              "materialityRating"
+            ],
+            "additionalProperties": false
+          },
+          "explanation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "target"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "$schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "prompt",
+    "examples"
+  ],
+  "additionalProperties": false
+}

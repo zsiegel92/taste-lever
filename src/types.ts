@@ -77,3 +77,15 @@ export function assertIsConcreteZodSchema(
     throw new Error("Target schema must be a concrete Zod schema");
   }
 }
+
+
+export function getJsonSchemaForZodSchemaOfExamples<R>(
+  schema: z.ZodType<R>,
+) {
+  const compiledPromptWithExamplesSchema = z.object({
+    prompt: compiledPromptSchema,
+    examples: z.array(schema),
+    $schema: z.string().optional(),
+  });
+  return z.toJSONSchema(compiledPromptWithExamplesSchema);
+}
