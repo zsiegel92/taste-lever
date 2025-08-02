@@ -14,7 +14,6 @@ const dataSchema = z.object({
   ]),
   takeaway: z.string(),
   quotedText: z.string(),
-  isContextual: z.boolean(),
   priorContext: z.string().nullable(),
   calendarEventId: z.string(),
   importanceScore: z.number().min(1).max(3),
