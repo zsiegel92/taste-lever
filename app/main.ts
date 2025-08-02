@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import { recordSchema } from "./types";
 import * as tl from "@/src/taste-lever";
 
@@ -25,12 +25,15 @@ async function main() {
     schema: recordSchema,
     train,
     test,
-    getScoreFromTargetObject: (predicted)=> predicted.materialityRating,
+    getScoreFromTargetObject: (predicted) => predicted.materialityRating,
     initialPrompt: null,
     // lossFunction: (predicted, target) =>
-      // Math.abs(predicted.materialityRating - target.materialityRating),
+    // Math.abs(predicted.materialityRating - target.materialityRating),
   });
   console.log(compiledPrompt);
+  const compiledPromptPath = "test-results/compiled-prompt.json";
+  await writeFile(compiledPromptPath, JSON.stringify(compiledPrompt, null, 2));
+  console.log(`compiled prompt written to ${compiledPromptPath}`);
 }
 
 main();
