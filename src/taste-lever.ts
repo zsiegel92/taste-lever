@@ -176,7 +176,72 @@ ${JSON.stringify(dataPoint.target, null, 2)}
   return explanation.text;
 }
 
-async function evaluatePrompt<D, T>({
+async function batchPromises<T>(
+  getPromises: (() => Promise<T>)[],
+  batchSize: number
+): Promise<T[]> {
+  const output: T[] = [];
+  const nBatches = Math.ceil(getPromises.length / batchSize);
+  for (let i = 0; i < getPromises.length; i += batchSize) {
+    console.log(`Executing batch ${i / batchSize + 1} of ${nBatches}`);
+    const batch = getPromises.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map((p) => p()));
+    output.push(...results);
+  }
+  return output;
+}
+
+async function runPromptOnOneDataPoint<D, T>({
+  schema,
+  example,
+  getScoreFromTargetObject,
+  compiledPromptWithExamples,
+}: {
+  schema: DataAndTargetSchema<D, T>;
+  example: DataPoint<D, T>;
+  getScoreFromTargetObject: (predicted: T) => number;
+  compiledPromptWithExamples: CompiledPromptWithFewshotExamples<D, T>;
+}): Promise<DataPointWithConfidence<D, T>> {
+  const targetSchema = schema.shape.target;
+  assertIsConcreteZodSchema(targetSchema);
+  const { system, prompt } = preparePrompt(
+    compiledPromptWithExamples,
+    example.data
+  );
+  const result = await generateObject({
+    model: openai.chat("gpt-4.1"),
+    providerOptions: {
+      openai: {
+        logprobs: true,
+      },
+    },
+    schema: targetSchema,
+    output: "object",
+    system,
+    prompt,
+  });
+  const prediction = targetSchema.parse(result.object);
+  let confidence: number | null = null;
+  try {
+    const resultBody = responseSchema.parse(result);
+    const logProbs = resultBody.response.body.choices?.[0]?.logprobs.content;
+    const logProbOfMaterialityToken = logProbs
+      ? logProbs.find(
+          (logProbObject) =>
+            logProbObject.token === String(getScoreFromTargetObject(prediction))
+        )?.logprob
+      : null;
+    confidence = logProbOfMaterialityToken
+      ? Math.exp(logProbOfMaterialityToken)
+      : null;
+  } catch {}
+  return {
+    dataPoint: example,
+    confidence: confidence ?? 1,
+  };
+}
+
+async function runPromptOnData<D, T>({
   schema,
   trainOrTest,
   getScoreFromTargetObject,
@@ -189,45 +254,19 @@ async function evaluatePrompt<D, T>({
 }): Promise<DataPointWithConfidence<D, T>[]> {
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
-  const resultsWithConfidences: DataPointWithConfidence<D, T>[] = [];
-  for (const example of trainOrTest) {
-    const { system, prompt } = preparePrompt(
-      compiledPromptWithExamples,
-      example.data
+  const resultsWithConfidences: DataPointWithConfidence<D, T>[] =
+    await batchPromises(
+      trainOrTest.map((example) => {
+        return () =>
+          runPromptOnOneDataPoint({
+            schema,
+            example,
+            getScoreFromTargetObject,
+            compiledPromptWithExamples,
+          });
+      }),
+      10
     );
-    const result = await generateObject({
-      model: openai.chat("gpt-4.1"),
-      providerOptions: {
-        openai: {
-          logprobs: true,
-        },
-      },
-      schema: targetSchema,
-      output: "object",
-      system,
-      prompt,
-    });
-    const prediction = targetSchema.parse(result.object);
-    let confidence: number | null = null;
-    try {
-      const resultBody = responseSchema.parse(result);
-      const logProbs = resultBody.response.body.choices?.[0]?.logprobs.content;
-      const logProbOfMaterialityToken = logProbs
-        ? logProbs.find(
-            (logProbObject) =>
-              logProbObject.token ===
-              String(getScoreFromTargetObject(prediction))
-          )?.logprob
-        : null;
-      confidence = logProbOfMaterialityToken
-        ? Math.exp(logProbOfMaterialityToken)
-        : null;
-    } catch {}
-    resultsWithConfidences.push({
-      dataPoint: example,
-      confidence: confidence ?? 1,
-    });
-  }
   return resultsWithConfidences;
 }
 
@@ -270,7 +309,7 @@ async function improvePromptAndExamples<D, T>({
   };
   let averagePerformanceBefore = Number.POSITIVE_INFINITY;
   if (initialPrompt) {
-    const performanceOnTestSetAfter = await evaluatePrompt({
+    const performanceOnTestSetAfter = await runPromptOnData({
       schema,
       trainOrTest: test,
       getScoreFromTargetObject,
@@ -288,7 +327,7 @@ async function improvePromptAndExamples<D, T>({
     console.log(`averagePerformanceBefore: ${averagePerformanceBefore}`);
   }
   const resultsWithConfidences: DataPointWithConfidence<D, T>[] =
-    await evaluatePrompt({
+    await runPromptOnData({
       schema,
       trainOrTest: train,
       getScoreFromTargetObject,
@@ -326,7 +365,7 @@ async function improvePromptAndExamples<D, T>({
     })
   );
   inProcessPrompt.examples.push(...newFewshotExamples);
-  const performanceOnTestSetAfter = await evaluatePrompt({
+  const performanceOnTestSetAfter = await runPromptOnData({
     schema,
     trainOrTest: test,
     getScoreFromTargetObject,
