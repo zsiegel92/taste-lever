@@ -1,10 +1,18 @@
 import { z } from "zod";
 
-const compiledPromptSchema = z.object({
-  systemPrompt: z.string(),
-  preExamplesPrompt: z.string(),
-  postExamplesPreTestCasePrompt: z.string(),
-  finalPrompt: z.string(),
+export const compiledPromptSchema = z.object({
+  systemPrompt: z.string().describe("The system prompt to use for the prompt."),
+  preExamplesPrompt: z
+    .string()
+    .describe("The part of the prompt that precedes few-shot examples."),
+  postExamplesPreTestCasePrompt: z
+    .string()
+    .describe(
+      "The part of the prompt after the few-shot examples that precedes the test case."
+    ),
+  finalPrompt: z
+    .string()
+    .describe("The part of the prompt that follows the test case."),
 });
 
 export type CompiledPrompt = z.infer<typeof compiledPromptSchema>;
@@ -42,15 +50,29 @@ export function toDimensions<T extends ScoredDimensions>(
 
 export type DataAndTargetSchema<D, T> = z.ZodObject<{
   data: z.ZodType<D>;
-  target: z.ZodType<T>;
+  target: z.ZodObject<any>;
 }>;
 
+export type DataPoint<D, T> = z.output<DataAndTargetSchema<D, T>>;
 
 export type CompiledPromptWithFewshotExamples<D, T> = {
-	prompt: CompiledPrompt;
-	examples: {
-	  data: D;
-	  target: T;
-	}[];
-  };
-  
+  prompt: CompiledPrompt;
+  examples: {
+    data: D;
+    target: T;
+    explanation: string;
+  }[];
+};
+
+export type DataPointWithConfidence<D, T> = {
+  dataPoint: DataPoint<D, T>;
+  confidence: number;
+};
+
+export function assertIsConcreteZodSchema(
+  schema: unknown
+): asserts schema is z.ZodTypeAny {
+  if (!schema || typeof schema !== "object" || !("_def" in schema)) {
+    throw new Error("Target schema must be a concrete Zod schema");
+  }
+}

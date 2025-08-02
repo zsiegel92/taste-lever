@@ -26,6 +26,7 @@ async function main() {
     train,
     test,
     getScoreFromTargetObject: (predicted)=> predicted.materialityRating,
+    initialPrompt: null,
     // lossFunction: (predicted, target) =>
       // Math.abs(predicted.materialityRating - target.materialityRating),
   });
