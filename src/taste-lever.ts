@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { openai } from "@ai-sdk/openai";
-import { generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import {
   type CompiledPromptWithFewshotExamples,
   type DataAndTargetSchema,
@@ -130,6 +130,157 @@ ${prompt.prompt.finalPrompt}
     `,
   };
 }
+
+async function evaluatePrompt<D, T>({
+  schema,
+  trainOrTest,
+  getScoreFromTargetObject,
+  compiledPromptWithExamples,
+}: {
+  schema: DataAndTargetSchema<D, T>;
+  trainOrTest: DataPoint<D, T>[];
+  getScoreFromTargetObject: (predicted: T) => number;
+  compiledPromptWithExamples: CompiledPromptWithFewshotExamples<D, T>;
+}): Promise<DataPointWithConfidence<D, T>[]> {
+  const targetSchema = schema.shape.target;
+  assertIsConcreteZodSchema(targetSchema);
+  const resultsWithConfidences: DataPointWithConfidence<D, T>[] = [];
+  for (const example of trainOrTest) {
+    const { system, prompt } = preparePrompt(
+      compiledPromptWithExamples,
+      example.data
+    );
+    const result = await generateObject({
+      model: openai.chat("gpt-4.1"),
+      providerOptions: {
+        openai: {
+          logprobs: true,
+        },
+      },
+      schema: targetSchema,
+      output: "object",
+      system,
+      prompt,
+    });
+    const prediction = targetSchema.parse(result.object);
+    let confidence: number | null = null;
+    try {
+      const resultBody = responseSchema.parse(result);
+      const logProbs = resultBody.response.body.choices?.[0]?.logprobs.content;
+      const logProbOfMaterialityToken = logProbs
+        ? logProbs.find(
+            (logProbObject) =>
+              logProbObject.token ===
+              String(getScoreFromTargetObject(prediction))
+          )?.logprob
+        : null;
+      confidence = logProbOfMaterialityToken
+        ? Math.exp(logProbOfMaterialityToken)
+        : null;
+    } catch {}
+    resultsWithConfidences.push({
+      dataPoint: example,
+      confidence: confidence ?? 1,
+    });
+  }
+  return resultsWithConfidences;
+}
+
+async function improvePromptAndExamples<D, T>({
+  schema,
+  train,
+  test,
+  getScoreFromTargetObject,
+  initialPrompt = null,
+}: {
+  schema: DataAndTargetSchema<D, T>;
+  train: DataPoint<D, T>[];
+  test: DataPoint<D, T>[];
+  getScoreFromTargetObject: (predicted: T) => number;
+  initialPrompt: CompiledPromptWithFewshotExamples<D, T> | null;
+  // lossFunction: (predicted: T, target: T) => number;
+}): Promise<CompiledPromptWithFewshotExamples<D, T>> {
+  const targetSchema = schema.shape.target;
+  assertIsConcreteZodSchema(targetSchema);
+  const inProcessPrompt: CompiledPromptWithFewshotExamples<D, T> = {
+    prompt:
+      initialPrompt?.prompt ??
+      (await getBetterPrompt({
+        schema,
+        initialPrompt,
+        poorlyClassified: train.slice(0, 10),
+      })),
+    examples: initialPrompt?.examples ?? [],
+  };
+  const resultsWithConfidences: DataPointWithConfidence<D, T>[] =
+    await evaluatePrompt({
+      schema,
+      trainOrTest: train,
+      getScoreFromTargetObject,
+      compiledPromptWithExamples: inProcessPrompt,
+    });
+  const mostWrongMostConfident = resultsWithConfidences
+    .sort((a, b) => {
+      const confidenceWeightedLossA =
+        a.confidence *
+        Math.abs(
+          getScoreFromTargetObject(a.dataPoint.target) -
+            getScoreFromTargetObject(b.dataPoint.target)
+        );
+      const confidenceWeightedLossB =
+        b.confidence *
+        Math.abs(
+          getScoreFromTargetObject(b.dataPoint.target) -
+            getScoreFromTargetObject(a.dataPoint.target)
+        );
+      return confidenceWeightedLossA - confidenceWeightedLossB;
+    })
+    .slice(0, 5);
+  const newFewshotExamples = await Promise.all(
+    mostWrongMostConfident.map(async (d) => {
+      const { system, prompt } = preparePrompt(
+        inProcessPrompt,
+        d.dataPoint.data
+      );
+      const explanation = await generateText({
+        model: openai.chat("gpt-4.1"),
+        prompt: `
+You are attempting to explain why a given example is classified poorly.
+
+You will be shown a system prompt and a prompt (with few-shot examples) that attempted to classify an example. You will also be shown the ground-truth classification for that example.
+
+Your job is to give a short explanation as to why the example was classified poorly. That explanation will be shown along with this example as a new few-shot example in the prompt for future classification tasks. Please make sure your explanation is useful!
+
+# System prompt:
+
+<system>
+${system}
+</system>
+
+# Prompt for classification:
+
+<prompt>
+${prompt}
+</prompt>
+
+# Ground truth:
+
+<ground-truth>
+${JSON.stringify(d.dataPoint.target, null, 2)}
+</ground-truth>
+        `,
+      });
+      return {
+        data: d.dataPoint.data,
+        target: targetSchema.parse(d.dataPoint.target),
+        explanation: explanation.text,
+      };
+    })
+  );
+  inProcessPrompt.examples.push(...newFewshotExamples);
+  return inProcessPrompt;
+}
+
 export async function compile<D, T>({
   schema,
   train,
@@ -151,85 +302,12 @@ export async function compile<D, T>({
   console.log(test);
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
-  const inProcessPrompt: CompiledPromptWithFewshotExamples<D, T> = {
-    prompt:
-      initialPrompt?.prompt ??
-      (await getBetterPrompt({
-        schema,
-        initialPrompt,
-        poorlyClassified: train.slice(0, 10),
-      })),
-    examples: initialPrompt?.examples ?? [],
-  };
-
-  const resultsWithConfidences: DataPointWithConfidence<D, T>[] = [];
-  for (const example of train) {
-    const { system, prompt } = preparePrompt(inProcessPrompt, example.data);
-    const result = await generateObject({
-      model: openai.chat("gpt-4.1"),
-      providerOptions: {
-        openai: {
-          logprobs: true,
-        },
-      },
-      schema: targetSchema,
-      system,
-      prompt,
-    });
-    const prediction = targetSchema.parse(result.object);
-    let confidence: number | null = null;
-    try {
-      const resultBody = responseSchema.parse(result);
-      const logProbs = resultBody.response.body.choices?.[0]?.logprobs.content;
-      const logProbOfMaterialityToken = logProbs
-        ? logProbs.find(
-            (logProbObject) =>
-              logProbObject.token ===
-              String(getScoreFromTargetObject(prediction))
-          )?.logprob
-        : null;
-      confidence = logProbOfMaterialityToken
-        ? Math.exp(logProbOfMaterialityToken)
-        : null;
-    } catch {}
-    console.log("Confidence:", confidence);
-    resultsWithConfidences.push({
-      dataPoint: example,
-      confidence: confidence ?? 1,
-    });
-  }
-  const mostWrongMostConfident = resultsWithConfidences
-    .sort((a, b) => {
-      const confidenceWeightedLossA =
-        a.confidence *
-        Math.abs(
-          getScoreFromTargetObject(a.dataPoint.target) -
-            getScoreFromTargetObject(b.dataPoint.target)
-        );
-      const confidenceWeightedLossB =
-        b.confidence *
-        Math.abs(
-          getScoreFromTargetObject(b.dataPoint.target) -
-            getScoreFromTargetObject(a.dataPoint.target)
-        );
-      return confidenceWeightedLossA - confidenceWeightedLossB;
-    })
-    .slice(0, 5);
-
-  inProcessPrompt.examples.push(
-    ...mostWrongMostConfident.map((d) => ({
-      data: d.dataPoint.data,
-      target: targetSchema.parse(d.dataPoint.target),
-      explanation: "",
-    }))
-  );
-  return {
-    prompt: {
-      systemPrompt: "",
-      preExamplesPrompt: "",
-      postExamplesPreTestCasePrompt: "",
-      finalPrompt: "",
-    },
-    examples: [],
-  };
+  const improvedPrompt = await improvePromptAndExamples({
+    schema,
+    train,
+    test,
+    getScoreFromTargetObject,
+    initialPrompt,
+  });
+  return improvedPrompt;
 }
