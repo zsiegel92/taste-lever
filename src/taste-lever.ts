@@ -347,8 +347,15 @@ async function improvePromptAndExamples<D, T>({
       };
     })
   );
-  inProcessPrompt.examples.push(...newFewshotExamples);
-  return inProcessPrompt;
+  const optimizedPrompt = await getBetterPrompt({
+    schema,
+    initialPrompt: inProcessPrompt,
+    poorlyClassified: train.slice(0, 10),
+  })
+  return {prompt: optimizedPrompt, examples: [
+    ...inProcessPrompt.examples,
+    ...newFewshotExamples,
+  ]};
 }
 
 export async function compile<D, T>({
