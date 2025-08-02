@@ -31,6 +31,18 @@ async function main() {
   const compiledPromptPath = "test-results/compiled-prompt.json";
   await writeFile(compiledPromptPath, JSON.stringify(compiledPrompt, null, 2));
   console.log(`compiled prompt written to ${compiledPromptPath}`);
+
+
+  const compiledPrompt2 = await tl.compile({
+    schema: recordSchema,
+    train,
+    test,
+    getScoreFromTargetObject: (predicted) => predicted.materialityRating,
+    initialPrompt: compiledPrompt,
+  });
+  const compiledPrompt2Path = "test-results/compiled-prompt-2.json";
+  await writeFile(compiledPrompt2Path, JSON.stringify(compiledPrompt2, null, 2));
+  console.log(`compiled prompt written to ${compiledPrompt2Path}`);
 }
 
 main();

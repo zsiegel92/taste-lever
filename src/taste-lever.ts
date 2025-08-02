@@ -246,11 +246,13 @@ async function runPromptOnData<D, T>({
   trainOrTest,
   getScoreFromTargetObject,
   compiledPromptWithExamples,
+  batchSize = 20,
 }: {
   schema: DataAndTargetSchema<D, T>;
   trainOrTest: DataPoint<D, T>[];
   getScoreFromTargetObject: (predicted: T) => number;
   compiledPromptWithExamples: CompiledPromptWithFewshotExamples<D, T>;
+  batchSize?: number;
 }): Promise<DataPointWithConfidence<D, T>[]> {
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
@@ -265,7 +267,7 @@ async function runPromptOnData<D, T>({
             compiledPromptWithExamples,
           });
       }),
-      10
+      batchSize
     );
   return resultsWithConfidences;
 }
