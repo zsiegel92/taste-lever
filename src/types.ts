@@ -40,18 +40,17 @@ export function toDimensions<T extends ScoredDimensions>(
   }));
 }
 
-export type DataAndTargetSchema<
-  D extends { [key: string]: z.ZodTypeAny },
-  T extends { [key: string]: z.ZodTypeAny },
-> = z.ZodObject<{
-  data: z.ZodObject<D>;
-  target: z.ZodObject<T>;
+export type DataAndTargetSchema<D, T> = z.ZodObject<{
+  data: z.ZodType<D>;
+  target: z.ZodType<T>;
 }>;
 
+
 export type CompiledPromptWithFewshotExamples<D, T> = {
-  prompt: CompiledPrompt;
-  examples: {
-    data: D;
-    target: T;
-  }[];
-};
+	prompt: CompiledPrompt;
+	examples: {
+	  data: D;
+	  target: T;
+	}[];
+  };
+  
