@@ -7,7 +7,7 @@ import {
   type CompiledPrompt,
   assertIsConcreteZodSchema,
   compiledPromptSchema,
-  type DataPointWithConfidence,
+  type DataPointWithPredictionAndConfidence,
   type DataPoint,
 } from "./types";
 
@@ -201,7 +201,7 @@ async function runPromptOnOneDataPoint<D, T>({
   example: DataPoint<D, T>;
   getScoreFromTargetObject: (predicted: T) => number;
   compiledPromptWithExamples: CompiledPromptWithFewshotExamples<D, T>;
-}): Promise<DataPointWithConfidence<D, T>> {
+}): Promise<DataPointWithPredictionAndConfidence<D, T>> {
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
   const { system, prompt } = preparePrompt(
@@ -237,6 +237,7 @@ async function runPromptOnOneDataPoint<D, T>({
   } catch {}
   return {
     dataPoint: example,
+    prediction,
     confidence: confidence ?? 1,
   };
 }
@@ -253,10 +254,10 @@ async function runPromptOnData<D, T>({
   getScoreFromTargetObject: (predicted: T) => number;
   compiledPromptWithExamples: CompiledPromptWithFewshotExamples<D, T>;
   batchSize?: number;
-}): Promise<DataPointWithConfidence<D, T>[]> {
+}): Promise<DataPointWithPredictionAndConfidence<D, T>[]> {
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
-  const resultsWithConfidences: DataPointWithConfidence<D, T>[] =
+  const resultsWithConfidences: DataPointWithPredictionAndConfidence<D, T>[] =
     await batchPromises(
       trainOrTest.map((example) => {
         return () =>
@@ -307,7 +308,7 @@ async function improvePromptAndExamples<D, T>({
       })),
     examples: initialPrompt?.examples ?? [],
   };
-  const resultsWithConfidences: DataPointWithConfidence<D, T>[] =
+  const resultsWithConfidences: DataPointWithPredictionAndConfidence<D, T>[] =
     await runPromptOnData({
       schema,
       trainOrTest: train,
@@ -320,13 +321,13 @@ async function improvePromptAndExamples<D, T>({
         a.confidence *
         Math.abs(
           getScoreFromTargetObject(a.dataPoint.target) -
-            getScoreFromTargetObject(b.dataPoint.target)
+            getScoreFromTargetObject(a.prediction)
         );
       const confidenceWeightedLossB =
         b.confidence *
         Math.abs(
           getScoreFromTargetObject(b.dataPoint.target) -
-            getScoreFromTargetObject(a.dataPoint.target)
+            getScoreFromTargetObject(b.prediction)
         );
       return confidenceWeightedLossA - confidenceWeightedLossB;
     })
@@ -380,7 +381,7 @@ export async function compile<D, T>({
         curr.confidence *
         Math.abs(
           getScoreFromTargetObject(curr.dataPoint.target) -
-            getScoreFromTargetObject(curr.dataPoint.target)
+            getScoreFromTargetObject(curr.prediction)
         )
     );
     console.log(`averagePerformanceBefore: ${averagePerformanceBefore}`);
@@ -403,7 +404,7 @@ export async function compile<D, T>({
       curr.confidence *
       Math.abs(
         getScoreFromTargetObject(curr.dataPoint.target) -
-          getScoreFromTargetObject(curr.dataPoint.target)
+          getScoreFromTargetObject(curr.prediction)
       )
   );
   console.log(`averagePerformanceAfter: ${averagePerformanceAfter}`);
