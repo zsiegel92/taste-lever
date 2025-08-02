@@ -363,13 +363,8 @@ export async function compile<D, T>({
   test: DataPoint<D, T>[];
   getScoreFromTargetObject: (predicted: T) => number;
   initialPrompt: CompiledPromptWithFewshotExamples<D, T> | null;
-  // lossFunction: (predicted: T, target: T) => number;
 }): Promise<CompiledPromptWithFewshotExamples<D, T>> {
   // TODO: uniquify with sha hashing elements
-  // TODO: separate out few-shot examples by finding high-confidence wrong examples
-  console.log(schema);
-  console.log(train);
-  console.log(test);
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
   const improvedPrompt = await improvePromptAndExamples({
