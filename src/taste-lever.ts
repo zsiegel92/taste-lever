@@ -285,6 +285,17 @@ function average<T>(
   return averageScore;
 }
 
+function calculateConfidenceWeightedLoss<D, T>(
+  dataPoint: DataPointWithPredictionAndConfidence<D, T>,
+  getScoreFromTargetObject: (predicted: T) => number
+): number {
+  return dataPoint.confidence *
+    Math.abs(
+      getScoreFromTargetObject(dataPoint.dataPoint.target) -
+        getScoreFromTargetObject(dataPoint.prediction)
+    );
+}
+
 async function improvePromptAndExamples<D, T>({
   schema,
   train,
@@ -317,18 +328,8 @@ async function improvePromptAndExamples<D, T>({
     });
   const mostWrongMostConfident = resultsWithConfidences
     .sort((a, b) => {
-      const confidenceWeightedLossA =
-        a.confidence *
-        Math.abs(
-          getScoreFromTargetObject(a.dataPoint.target) -
-            getScoreFromTargetObject(a.prediction)
-        );
-      const confidenceWeightedLossB =
-        b.confidence *
-        Math.abs(
-          getScoreFromTargetObject(b.dataPoint.target) -
-            getScoreFromTargetObject(b.prediction)
-        );
+      const confidenceWeightedLossA = calculateConfidenceWeightedLoss(a, getScoreFromTargetObject);
+      const confidenceWeightedLossB = calculateConfidenceWeightedLoss(b, getScoreFromTargetObject);
       return confidenceWeightedLossA - confidenceWeightedLossB;
     })
     .slice(0, 5);
@@ -377,12 +378,7 @@ export async function compile<D, T>({
     });
     averagePerformanceBefore = average(
       performanceOnTestSetBefore,
-      (curr) =>
-        curr.confidence *
-        Math.abs(
-          getScoreFromTargetObject(curr.dataPoint.target) -
-            getScoreFromTargetObject(curr.prediction)
-        )
+      (curr) => calculateConfidenceWeightedLoss(curr, getScoreFromTargetObject)
     );
     console.log(`averagePerformanceBefore: ${averagePerformanceBefore}`);
   }
@@ -400,12 +396,7 @@ export async function compile<D, T>({
   });
   const averagePerformanceAfter = average(
     performanceOnTestSetAfter,
-    (curr) =>
-      curr.confidence *
-      Math.abs(
-        getScoreFromTargetObject(curr.dataPoint.target) -
-          getScoreFromTargetObject(curr.prediction)
-      )
+    (curr) => calculateConfidenceWeightedLoss(curr, getScoreFromTargetObject)
   );
   console.log(`averagePerformanceAfter: ${averagePerformanceAfter}`);
   console.log(

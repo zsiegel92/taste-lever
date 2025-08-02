@@ -64,7 +64,7 @@ export type CompiledPromptWithFewshotExamples<D, T> = {
   }[];
 };
 
-export type DataPointWithConfidence<D, T> = {
+export type DataPointWithPredictionAndConfidence<D, T> = {
   dataPoint: DataPoint<D, T>;
   prediction: T
   confidence: number;
