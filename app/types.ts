@@ -15,12 +15,10 @@ const dataSchema = z.object({
   takeaway: z.string(),
   quotedText: z.string(),
   priorContext: z.string().nullable(),
-  calendarEventId: z.string(),
-  importanceScore: z.number().min(1).max(3),
 });
 
 const targetSchema = z.object({
-  materialityRating: z.number().min(1).max(3),
+  materialityRating: z.number().min(1).max(3).describe("The materiality rating of the text snippet. An integer 1 and 3!"),
 });
 
 type Data = z.infer<typeof dataSchema>;
