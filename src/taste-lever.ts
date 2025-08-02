@@ -231,6 +231,18 @@ async function evaluatePrompt<D, T>({
   return resultsWithConfidences;
 }
 
+function average<T>(
+  dataPoints: T[],
+  getScoreFromOneDataPoint: (dataPoint: T) => number
+) {
+  const averageScore =
+    dataPoints.reduce((acc, curr) => {
+      const score = getScoreFromOneDataPoint(curr);
+      return acc + score;
+    }, 0) / dataPoints.length;
+  return averageScore;
+}
+
 async function improvePromptAndExamples<D, T>({
   schema,
   train,
@@ -243,7 +255,6 @@ async function improvePromptAndExamples<D, T>({
   test: DataPoint<D, T>[];
   getScoreFromTargetObject: (predicted: T) => number;
   initialPrompt: CompiledPromptWithFewshotExamples<D, T> | null;
-  // lossFunction: (predicted: T, target: T) => number;
 }): Promise<CompiledPromptWithFewshotExamples<D, T>> {
   const targetSchema = schema.shape.target;
   assertIsConcreteZodSchema(targetSchema);
@@ -257,6 +268,25 @@ async function improvePromptAndExamples<D, T>({
       })),
     examples: initialPrompt?.examples ?? [],
   };
+  let averagePerformanceBefore = Number.POSITIVE_INFINITY;
+  if (initialPrompt) {
+    const performanceOnTestSetAfter = await evaluatePrompt({
+      schema,
+      trainOrTest: test,
+      getScoreFromTargetObject,
+      compiledPromptWithExamples: inProcessPrompt,
+    });
+    averagePerformanceBefore = average(
+      performanceOnTestSetAfter,
+      (curr) =>
+        curr.confidence *
+        Math.abs(
+          getScoreFromTargetObject(curr.dataPoint.target) -
+            getScoreFromTargetObject(curr.dataPoint.target)
+        )
+    );
+    console.log(`averagePerformanceBefore: ${averagePerformanceBefore}`);
+  }
   const resultsWithConfidences: DataPointWithConfidence<D, T>[] =
     await evaluatePrompt({
       schema,
@@ -282,7 +312,7 @@ async function improvePromptAndExamples<D, T>({
     })
     .slice(0, 5);
   const newFewshotExamples = await Promise.all(
-    mostWrongMostConfident.map(async ({dataPoint}) => {
+    mostWrongMostConfident.map(async ({ dataPoint }) => {
       const explanation = await getExplanationForExample({
         schema,
         inProcessPrompt,
@@ -296,7 +326,29 @@ async function improvePromptAndExamples<D, T>({
     })
   );
   inProcessPrompt.examples.push(...newFewshotExamples);
-  return inProcessPrompt;
+  const performanceOnTestSetAfter = await evaluatePrompt({
+    schema,
+    trainOrTest: test,
+    getScoreFromTargetObject,
+    compiledPromptWithExamples: inProcessPrompt,
+  });
+  const averagePerformanceAfter = average(
+    performanceOnTestSetAfter,
+    (curr) =>
+      curr.confidence *
+      Math.abs(
+        getScoreFromTargetObject(curr.dataPoint.target) -
+          getScoreFromTargetObject(curr.dataPoint.target)
+      )
+  );
+  console.log(`averagePerformanceAfter: ${averagePerformanceAfter}`);
+  console.log(
+    `improvement: ${averagePerformanceAfter - averagePerformanceBefore}`
+  );
+  if (averagePerformanceAfter < averagePerformanceBefore) {
+    return inProcessPrompt;
+  }
+  return initialPrompt ?? inProcessPrompt;
 }
 
 export async function compile<D, T>({
