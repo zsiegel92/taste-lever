@@ -131,6 +131,51 @@ ${prompt.prompt.finalPrompt}
   };
 }
 
+async function getExplanationForExample<D, T>({
+  schema,
+  inProcessPrompt,
+  dataPoint,
+}: {
+  schema: DataAndTargetSchema<D, T>;
+  inProcessPrompt: CompiledPromptWithFewshotExamples<D, T>;
+  dataPoint: DataPoint<D, T>;
+}): Promise<string> {
+  const targetSchema = schema.shape.target;
+  assertIsConcreteZodSchema(targetSchema);
+
+  const { system, prompt } = preparePrompt(inProcessPrompt, dataPoint.data);
+
+  const explanation = await generateText({
+    model: openai.chat("gpt-4.1"),
+    prompt: `
+You are attempting to explain why a given example is classified poorly.
+
+You will be shown a system prompt and a prompt (with few-shot examples) that attempted to classify an example. You will also be shown the ground-truth classification for that example.
+
+Your job is to give a short explanation as to why the example was classified poorly. That explanation will be shown along with this example as a new few-shot example in the prompt for future classification tasks. Please make sure your explanation is useful!
+
+# System prompt:
+
+<system>
+${system}
+</system>
+
+# Prompt for classification:
+
+<prompt>
+${prompt}
+</prompt>
+
+# Ground truth:
+
+<ground-truth>
+${JSON.stringify(dataPoint.target, null, 2)}
+</ground-truth>
+    `,
+  });
+  return explanation.text;
+}
+
 async function evaluatePrompt<D, T>({
   schema,
   trainOrTest,
@@ -237,43 +282,16 @@ async function improvePromptAndExamples<D, T>({
     })
     .slice(0, 5);
   const newFewshotExamples = await Promise.all(
-    mostWrongMostConfident.map(async (d) => {
-      const { system, prompt } = preparePrompt(
+    mostWrongMostConfident.map(async ({dataPoint}) => {
+      const explanation = await getExplanationForExample({
+        schema,
         inProcessPrompt,
-        d.dataPoint.data
-      );
-      const explanation = await generateText({
-        model: openai.chat("gpt-4.1"),
-        prompt: `
-You are attempting to explain why a given example is classified poorly.
-
-You will be shown a system prompt and a prompt (with few-shot examples) that attempted to classify an example. You will also be shown the ground-truth classification for that example.
-
-Your job is to give a short explanation as to why the example was classified poorly. That explanation will be shown along with this example as a new few-shot example in the prompt for future classification tasks. Please make sure your explanation is useful!
-
-# System prompt:
-
-<system>
-${system}
-</system>
-
-# Prompt for classification:
-
-<prompt>
-${prompt}
-</prompt>
-
-# Ground truth:
-
-<ground-truth>
-${JSON.stringify(d.dataPoint.target, null, 2)}
-</ground-truth>
-        `,
+        dataPoint: dataPoint,
       });
       return {
-        data: d.dataPoint.data,
-        target: targetSchema.parse(d.dataPoint.target),
-        explanation: explanation.text,
+        data: dataPoint.data,
+        target: targetSchema.parse(dataPoint.target),
+        explanation: explanation,
       };
     })
   );
