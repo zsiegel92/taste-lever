@@ -50,7 +50,7 @@ export function toDimensions<T extends ScoredDimensions>(
 
 export type DataAndTargetSchema<D, T> = z.ZodObject<{
   data: z.ZodType<D>;
-  target: z.ZodObject<any>;
+  target: z.ZodType<T>;
 }>;
 
 export type DataPoint<D, T> = z.output<DataAndTargetSchema<D, T>>;

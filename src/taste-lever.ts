@@ -140,7 +140,7 @@ export async function compile<D, T>({
   schema: DataAndTargetSchema<D, T>;
   train: DataPoint<D, T>[];
   test: DataPoint<D, T>[];
-  getScoreFromTargetObject: (predicted: any) => number;
+  getScoreFromTargetObject: (predicted: T) => number;
   initialPrompt: CompiledPromptWithFewshotExamples<D, T> | null;
   // lossFunction: (predicted: T, target: T) => number;
 }): Promise<CompiledPromptWithFewshotExamples<D, T>> {
@@ -219,7 +219,7 @@ export async function compile<D, T>({
   inProcessPrompt.examples.push(
     ...mostWrongMostConfident.map((d) => ({
       data: d.dataPoint.data,
-      target:  d.dataPoint.target,
+      target: targetSchema.parse(d.dataPoint.target),
       explanation: "",
     }))
   );
