@@ -22,9 +22,14 @@ async function getData() {
   return { train: parsedTrainRecords, test: parsedTestRecords };
 }
 
+const useAbsSchemaPath = false;
+
 const jsonSchemaForOutput = getJsonSchemaForZodSchemaOfExamples(recordSchema);
-const jsonSchemaAbsolutePath = `${process.cwd()}/compiled-prompt-schema.json`;
-const jsonSchemaReferencePath = `file://${jsonSchemaAbsolutePath}`;
+const jsonSchemaFileName = "compiled-prompt-schema.json";
+const jsonSchemaAbsolutePath = `${process.cwd()}/test-results/${jsonSchemaFileName}`;
+const jsonSchemaReferencePath = useAbsSchemaPath
+  ? `file://${jsonSchemaAbsolutePath}`
+  : `./${jsonSchemaFileName}`;
 
 // TODO: json load prompt from file
 // TODO: json schema for prompt file in json form

@@ -20,7 +20,7 @@ where the value of `myScore` consists of a single token (e.g. any digit, or `Yes
     - instructions that follow few-shot examples but precede the test case
     - instructions that follow the test case
 - Few-shot examples selected strategically using LLM confidence (using log probabilities on logits corresponding to target class token)
-- JSON schema generated dynamically and referened in final prompt artifacts, which are stored as `.json` files (JSON prompt artifacts are linted in your IDE using JSON Schema `$schema: ` references to `file://` URIs generated in your workspace).
+- JSON schema generated dynamically and referened in final prompt artifacts, which are stored as `.json` files (JSON prompt artifacts are linted in your IDE using JSON Schema `$schema: ` references to `file://` URIs generated in your workspace) or with a relative path (ideally store in the same directory).
 
 ## Usage
 
