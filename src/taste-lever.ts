@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { openai } from "@ai-sdk/openai";
+import { openai, type OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { generateObject, generateText } from "ai";
 import {
   type CompiledPromptWithFewshotExamples,
@@ -83,7 +83,14 @@ ${JSON.stringify(initialPrompt.examples, null, 2)}
 Go!
     `;
   const result = await generateObject({
-    model: openai.chat("gpt-4.1"),
+    model: openai.chat("gpt-5-mini"),
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+        textVerbosity: "low",
+        serviceTier: "priority", // | "auto" | "flex"
+      } satisfies OpenAIResponsesProviderOptions,
+    },
     schema: compiledPromptSchema,
     prompt,
   });
@@ -146,7 +153,14 @@ async function getExplanationForExample<D, T>({
   const { system, prompt } = preparePrompt(inProcessPrompt, dataPoint.data);
 
   const explanation = await generateText({
-    model: openai.chat("gpt-4.1"),
+    model: openai.chat("gpt-5-nano"),
+    providerOptions: {
+      openai: {
+        reasoningEffort: "low",
+        textVerbosity: "low",
+        serviceTier: "priority", // | "auto" | "flex"
+      } satisfies OpenAIResponsesProviderOptions,
+    },
     prompt: `
 You are attempting to explain why a given example is classified poorly.
 
@@ -213,7 +227,8 @@ async function runPromptOnOneDataPoint<D, T>({
     providerOptions: {
       openai: {
         logprobs: true,
-      },
+        serviceTier: "priority", // | "auto" | "flex"
+      } satisfies OpenAIResponsesProviderOptions,
     },
     schema: targetSchema,
     output: "object",
@@ -289,11 +304,13 @@ function calculateConfidenceWeightedLoss<D, T>(
   dataPoint: DataPointWithPredictionAndConfidence<D, T>,
   getScoreFromTargetObject: (predicted: T) => number
 ): number {
-  return dataPoint.confidence *
+  return (
+    dataPoint.confidence *
     Math.abs(
       getScoreFromTargetObject(dataPoint.dataPoint.target) -
         getScoreFromTargetObject(dataPoint.prediction)
-    );
+    )
+  );
 }
 
 async function improvePromptAndExamples<D, T>({
@@ -328,8 +345,14 @@ async function improvePromptAndExamples<D, T>({
     });
   const mostWrongMostConfident = resultsWithConfidences
     .sort((a, b) => {
-      const confidenceWeightedLossA = calculateConfidenceWeightedLoss(a, getScoreFromTargetObject);
-      const confidenceWeightedLossB = calculateConfidenceWeightedLoss(b, getScoreFromTargetObject);
+      const confidenceWeightedLossA = calculateConfidenceWeightedLoss(
+        a,
+        getScoreFromTargetObject
+      );
+      const confidenceWeightedLossB = calculateConfidenceWeightedLoss(
+        b,
+        getScoreFromTargetObject
+      );
       return confidenceWeightedLossA - confidenceWeightedLossB;
     })
     .slice(0, 5);
@@ -351,11 +374,11 @@ async function improvePromptAndExamples<D, T>({
     schema,
     initialPrompt: inProcessPrompt,
     poorlyClassified: train.slice(0, 10),
-  })
-  return {prompt: optimizedPrompt, examples: [
-    ...inProcessPrompt.examples,
-    ...newFewshotExamples,
-  ]};
+  });
+  return {
+    prompt: optimizedPrompt,
+    examples: [...inProcessPrompt.examples, ...newFewshotExamples],
+  };
 }
 
 export async function compile<D, T>({
@@ -383,9 +406,8 @@ export async function compile<D, T>({
       getScoreFromTargetObject,
       compiledPromptWithExamples: initialPrompt,
     });
-    averagePerformanceBefore = average(
-      performanceOnTestSetBefore,
-      (curr) => calculateConfidenceWeightedLoss(curr, getScoreFromTargetObject)
+    averagePerformanceBefore = average(performanceOnTestSetBefore, (curr) =>
+      calculateConfidenceWeightedLoss(curr, getScoreFromTargetObject)
     );
     console.log(`averagePerformanceBefore: ${averagePerformanceBefore}`);
   }
@@ -401,9 +423,8 @@ export async function compile<D, T>({
     getScoreFromTargetObject,
     compiledPromptWithExamples: improvedPrompt,
   });
-  const averagePerformanceAfter = average(
-    performanceOnTestSetAfter,
-    (curr) => calculateConfidenceWeightedLoss(curr, getScoreFromTargetObject)
+  const averagePerformanceAfter = average(performanceOnTestSetAfter, (curr) =>
+    calculateConfidenceWeightedLoss(curr, getScoreFromTargetObject)
   );
   console.log(`averagePerformanceAfter: ${averagePerformanceAfter}`);
   console.log(
