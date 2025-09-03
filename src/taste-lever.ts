@@ -158,7 +158,6 @@ async function getExplanationForExample<D, T>({
       openai: {
         reasoningEffort: "low",
         textVerbosity: "low",
-        serviceTier: "priority", // | "auto" | "flex"
       } satisfies OpenAIResponsesProviderOptions,
     },
     prompt: `
